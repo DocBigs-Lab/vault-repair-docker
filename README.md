@@ -53,11 +53,15 @@ nächster `run` überspringt fertige Dateien. Ctrl+C, Reboot, Container-Tod: all
 
 ## Tempo (Richtwerte)
 
-| Host | Ganze Bibliothek (733 STL) |
+| Host | Ganze Bibliothek (733 STL, 310 mit Fehlern) |
 |---|---|
 | Laptop Core Ultra 7 (2 Worker, Upstream-Messung) | ~2 h |
-| Normaler Docker-Host (2–4 Worker) | ~30 min |
-| DGX Spark / arm64-KI-Box (4+ Worker) | grob unter 1 h (Einzellauf, nicht Referenzwert) |
+| dein docker-host (2 Worker, live gemessen 31.10.) | ETA nach den großen Fehlerhaften ~3–5 h; mit `--skip XL` und mehr Workern deutlich drunter |
+| DGX Spark / arm64-KI-Box (4+ Worker) | grob unter 1 h (Erwartung, nicht Referenzwert) |
+
+Die Restzeit-Anzeige springt am Anfang: Reparaturzeit hängt von der **Fehlerzahl**
+pro Datei ab, nicht von der Dateigröße — Details und Tempo-Hebel (`--skip XL`,
+`--workers`, Resume-Neustart) in [INSTALL.md](INSTALL.md).
 
 ## Aufbau
 

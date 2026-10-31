@@ -84,6 +84,26 @@ STL files: 733, other files copied: 15
 Fortschritt ist Zeile pro Datei; Restzeit ist am Anfang hochgerechnet, weil die größten
 Module zuerst laufen.
 
+### Warum die Restzeit am Anfang springt
+
+Die Reparaturzeit pro Datei hängt von der **Fehlerzahl** ab, nicht von der
+Dreieckszahl: ein großer Modul mit 24 Defekten kann in unter einer Minute fertig
+sein, ein kleinerer mit 7.500 Defekten 20 Minuten brauchen (die numpy-Reparatur
+näht Schlitze, schließt Löcher und patcht verbleibende Knoten iterativ). Weil dazu
+die fehlerfreien Kopier-Dateien (~3 s) die Prozent-Rechnung verwässern, ist das
+ETA in den ersten Minuten ungenau — nach den ersten großen fehlerhaften Modulen
+pendelt es sich ein.
+
+Wer die XL-Module nicht druckt (Betten unter 340×320 mm, z. B. Snapmaker U1):
+einfach `--skip XL` ergänzen — die XLs liegen quer bei 42,8° und sind die
+Zeitmonster der Bibliothek.
+
+Wer mehr Kerne frei hat: Abbrechen (Strg+C) und mit mehr Workern neu starten ist
+jederzeit sicher — die Resume-Datei im Zielordner setzt fort, Fertiges wird
+übersprungen. Richtwert: `worker ≈ min(Kerne/2, RAM_GB/6)`; bei hoher Worker-Zahl
+`OMP_NUM_THREADS=2` setzen (compose.yaml → `environment:`), sonst streiten die
+numpy-Threads der Worker untereinander um Kerne.
+
 ## Schritt 6 — Ergebnis prüfen
 
 ```bash
