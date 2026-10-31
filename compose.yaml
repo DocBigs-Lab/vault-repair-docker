@@ -1,0 +1,14 @@
+# VAULT-STL-Reparatur als Einmal-Job. Ausführen:
+#   docker compose run --rm vault-repair /vault /out --method numpy --workers 4
+# Eingabe read-only gemountet, Ausgabe ins eigene Verzeichnis ./vault_repariert
+services:
+  vault-repair:
+    build: .
+    # Dateien später dem Host-Nutzer gehören lassen (ggf. anpassen):
+    user: "1000:1000"
+    volumes:
+      - ./vault:/vault:ro
+      - ./vault_repariert:/out
+    # Resume-Datei (vault_stl_repair.json) liegt in /out -> überlebt Abbruch/Neustart
+    # RAM: größte Module brauchen einige GB pro Worker; Deckel ist optional:
+    # deploy: { resources: { limits: { memory: 16G } } }
