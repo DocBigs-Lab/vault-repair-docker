@@ -1,2 +1,3 @@
-vault/
-vault_repariert/
+/vault
+/vault_repariert
+/.env

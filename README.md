@@ -1,17 +1,27 @@
+<p align="center">
+  <a href="https://docbigs-lab.de">
+    <img src="https://raw.githubusercontent.com/DocBigs-Lab/SML-Meter-Gateway/main/docs/assets/docbigslab_logo.svg" alt="DocBigsLab Logo" width="200">
+  </a>
+</p>
+<p align="center">
+  <a href="https://docbigs-lab.de">https://docbigs-lab.de</a>
+</p>
+
 # VAULT-STL-Reparatur im Docker-Container
 
 Docker-Wrapper für [rawel2/vault-stl-repair](https://github.com/rawel2/vault-stl-repair) (MIT):
 repariert die Mesh-Fehler der **VAULT-STL-Bibliothek** (USSA Design) komplett in einem Durchlauf —
-plattformunabhängig auf Linux/arm64/x86, ohne Windows und ohne Python-Setup auf dem Host.
+plattformunabhängig auf Linux (x86/arm64) und macOS mit Docker Desktop, ohne Windows und ohne Python-Setup auf dem Host.
 
 Die Reparatur-Methode `numpy` entfernt duplizierte Flächenpaare, nicht-manifold Kanten und
 invertierte Flächen, bis Slicer (Bambu Studio, OrcaSlicer) die Dateien kampflos schlucken.
 
 ## Was es repariert
 
-- 310 von 310 fehlerhaften Dateien in der Bibliothek — numpy-Methode: **308** (die
-  S6-1F/2F-Schließmodul-Varianten mit bis zu 12-fach gestapelter Wand bleiben unverändert;
-  dafür existiert nur die Windows-Methode des Upstream-Tools)
+- Laut Upstream-Messung (älterer Bibliotheksstand mit 310 fehlerhaften Dateien) schafft die
+  numpy-Methode **308** davon (die S6-1F/2F-Schließmodul-Varianten mit bis zu 12-fach
+  gestapelter Wand bleiben unverändert; dafür existiert nur die Windows-Methode des
+  Upstream-Tools).
 - Geometrie bleibt erhalten (typische Abweichung 0 mm, nie schlechter als das Original —
   Details und Messtabellen im Upstream-Repo)
 - Reparierte Dateien tragen den STL-Header `VAULT STL repair (numpy)`
@@ -19,7 +29,7 @@ invertierte Flächen, bis Slicer (Bambu Studio, OrcaSlicer) die Dateien kampflos
 ## Schnellstart
 
 Voraussetzungen: Docker (mit Compose-Plugin), ~50 GB freier Speicher während des Laufs
-(Bibliothek ~24 GB × Eingang + Ausgang).
+(Bibliothek ~24 GB, einmal als Eingang und einmal als Ausgang).
 
 ```bash
 # 1. Repo klonen
@@ -28,10 +38,14 @@ git clone https://github.com/DocBigs-Lab/vault-repair-docker.git vault-repair &&
 # 2. VAULT-Bibliothek bereitstellen (Ordner mit 01. DRAWERS, 02. SUSTAINERS, …)
 ln -s /pfad/zu/VAULT ./vault
 
-# 3. Bauen (~2 min, danach kein Internet mehr nötig)
+# 3. Zielordner und Host-User festlegen (sonst legt Docker den Ordner als root an)
+mkdir -p vault_repariert
+printf 'HOST_UID=%s\nHOST_GID=%s\n' "$(id -u)" "$(id -g)" > .env
+
+# 4. Bauen (~2 min, danach kein Internet mehr nötig)
 docker compose build
 
-# 4. Reparieren (Arbeitsverzeichnisse entstehen von selbst)
+# 5. Reparieren
 docker compose run --rm vault-repair /vault /out --method numpy --workers 2
 ```
 
@@ -51,27 +65,20 @@ Fertige Dateien liegen in `./vault_repariert/`, mit CSV-Bericht
 **Unterbrechen jederzeit ok:** Die Resume-Datei `vault_stl_repair.json` liegt im Zielordner —
 nächster `run` überspringt fertige Dateien. Ctrl+C, Reboot, Container-Tod: alles egal.
 
-## Tempo (Richtwerte)
-
-| Host | Ganze Bibliothek (733 STL) |
-|---|---|
-| Laptop Core Ultra 7 (2 Worker, Upstream-Messung, 310 Fehlerdateien) | ~2 h |
-| docker-host (2 Worker, kompletter Lauf 31.10., **45** Fehlerdateien) | **31:27** — zwei M5-Module fraßen ~80 % der Zeit, der Rest war Kopierarbeit |
-| DGX Spark / arm64-KI-Box (4+ Worker) | grob eine halbe Stunde (Erwartung bei 45 Fehlerdateien, nicht Referenzwert) |
-
 Wie viele Dateien Fehler haben, hängt vom Stand deiner gelieferten Bibliothek ab
 (USSA liefert nach und nach fixes nach) — die Laufzeit folgt der **Fehlerzahl pro
 Datei**, nicht der Dateigröße: die zwei M5-Module mit je 1.300–1.700 s waren
-langamer als alle anderen 43 reparierten zusammen. Details und Tempo-Hebel
+langsamer als alle anderen 43 reparierten zusammen. Details und Tempo-Hebel
 (`--skip XL`, `--workers`, Resume-Neustart) in [INSTALL.md](INSTALL.md).
 
 ## Aufbau
 
-Nur ein ~12-Zeilen-`Dockerfile`: `python:3.12-slim` + `numpy`, die beiden Upstream-Skripte
-als **fester Commit** (Pin im Dockerfile) einkopiert — reproducible Build, kein
-`latest`-Drift. `compose.yaml` mountet die Quelle **read-only** und den Zielordner lesend-
-schreibend; Container läuft als Nicht-Root (`user:` in compose.yaml an deinen Host-User
-anpassen, Standard 1000:1000).
+Nur ein ~15-Zeilen-`Dockerfile`: `python:3.12-slim` + `numpy` (Version gepinnt), die beiden
+Upstream-Skripte als **fester Commit** einkopiert und per sha256-Prüfsumme festgenagelt —
+das Reparatur-Tool driftet nicht mit Upstream mit. (Das Basis-Image `python:3.12-slim` ist
+ein wandernder Tag und bekommt Sicherheits-Updates.) `compose.yaml` mountet die Quelle
+**read-only** und den Zielordner lesend-schreibend; Container läuft als Nicht-Root mit
+UID/GID aus `.env` (Standard 1000:1000).
 
 Details zur Installation (UID ermitteln, Mount-Varianten, Troubleshooting):
 siehe **[INSTALL.md](INSTALL.md)**.

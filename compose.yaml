@@ -1,11 +1,13 @@
 # VAULT-STL-Reparatur als Einmal-Job. Ausführen:
-#   docker compose run --rm vault-repair /vault /out --method numpy --workers 4
+#   docker compose run --rm vault-repair /vault /out --method numpy --workers 2
 # Eingabe read-only gemountet, Ausgabe ins eigene Verzeichnis ./vault_repariert
+# (vorher selbst anlegen: mkdir -p vault_repariert — sonst legt Docker es als root an)
 services:
   vault-repair:
     build: .
-    # Dateien später dem Host-Nutzer gehören lassen (ggf. anpassen):
-    user: "1000:1000"
+    image: vault-repair
+    # Dateien später dem Host-Nutzer gehören lassen; Werte aus .env (siehe INSTALL.md):
+    user: "${HOST_UID:-1000}:${HOST_GID:-1000}"
     volumes:
       - ./vault:/vault:ro
       - ./vault_repariert:/out

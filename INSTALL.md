@@ -2,7 +2,8 @@
 
 ## Voraussetzungen
 
-- Linux-Host mit Docker (Compose-Befehl: `docker compose` oder das ältere `docker-compose`-Plugin)
+- Docker mit Compose: Linux (x86/arm64) oder macOS mit Docker Desktop
+  (Befehl `docker compose`, bei alten Installationen `docker-compose`)
 - Genug Speicher: die Bibliothek doppelt (Eingang ~24 GB + Ausgang ~24 GB)
 - Die VAULT-STL-Bibliothek (gekauft bei [USSA Design](https://www.ussadesign.com/pages/vault);
   Ordner enthält `01. DRAWERS`, `02. SUSTAINERS`, …)
@@ -35,32 +36,33 @@ volumes:
 Wichtig: Das Ziel (`/out`) darf **nicht** innerhalb der Quelle liegen (der Upstream-Test
 weist sonst zurück, und der :ro-Mount würde ohnehin meckern).
 
-## Schritt 3 — Benutzer anpassen
+## Schritt 3 — Zielordner und Benutzer
 
-Der Container läuft per Default als `1000:1000`, damit die reparierten Dateien deinem
-Host-User gehören und nicht root:
+Den Zielordner **selbst anlegen**. Fehlt er, erzeugt Docker ihn beim Mount als `root`,
+und der Container (Nicht-Root) kann dann nicht hineinschreiben:
 
 ```bash
-id -u && id -g          # UID:GID deines Users anzeigen
+mkdir -p vault_repariert
 ```
 
-Bei anderen Werten in `compose.yaml` anpassen:
+Der Container läuft als dein Host-User, damit die reparierten Dateien dir gehören und
+nicht root. UID/GID kommen aus einer `.env` neben `compose.yaml` (ohne `.env` gilt `1000:1000`):
 
-```yaml
-user: "1000:1000"       # → deine Werte
+```bash
+printf 'HOST_UID=%s\nHOST_GID=%s\n' "$(id -u)" "$(id -g)" > .env
 ```
 
-(Genervte Root-Besitzer im Zielordner? `sudo chown -R <uid>:<gid> vault_repariert`.)
+(Zielordner gehört schon root? `sudo chown -R "$(id -u):$(id -g)" vault_repariert`.)
 
 ## Schritt 4 — Bauen
 
 ```bash
-docker compose build
-# older CLI: docker-compose build  /  docker compose build (Compose v2)
+docker compose build    # alte Installationen: docker-compose build
 ```
 
-Der Build lädt die beiden Upstream-Skripte **einmalig vom gepinnten Commit** — der Stack
-läuft danach ohne Internet. `python:3.12-slim` ist Multi-Arch: läuft auf x86-Servern und
+Der Build lädt die beiden Upstream-Skripte **einmalig vom gepinnten Commit** und prüft
+ihre sha256-Prüfsummen — der Stack läuft danach ohne Internet. `ADD --checksum` braucht
+BuildKit (bei aktuellem Docker Standard). `python:3.12-slim` ist Multi-Arch: läuft auf x86-Servern und
 ARM-Geräten (ARM-Board, Raspberry Pi 5, KI-Box).
 
 ## Schritt 5 — Erste Reparatur
@@ -87,12 +89,13 @@ Module zuerst laufen.
 ### Warum die Restzeit am Anfang springt
 
 Die Reparaturzeit pro Datei hängt von der **Fehlerzahl** ab, nicht von der
-Dreieckszahl: ein großer Modul mit 24 Defekten kann in unter einer Minute fertig
+Dreieckszahl: ein großes Modul mit 24 Defekten kann in unter einer Minute fertig
 sein, ein kleinerer mit 7.500 Defekten 20 Minuten brauchen (die numpy-Reparatur
 näht Schlitze, schließt Löcher und patcht verbleibende Knoten iterativ). Weil dazu
 die fehlerfreien Kopier-Dateien (~3 s) die Prozent-Rechnung verwässern, ist das
 ETA in den ersten Minuten ungenau — nach den ersten großen fehlerhaften Modulen
-pendelt es sich ein.
+pendelt es sich ein. Messwert: Ein kompletter Lauf (733 STL, davon 45 mit Fehlern,
+2 Worker) dauerte 31:27, davon fraßen zwei M5-Module rund 80 %.
 
 Wer die XL-Module nicht druckt (Betten unter 340×320 mm, z. B. Snapmaker U1):
 einfach `--skip XL` ergänzen — die XLs liegen quer bei 42,8° und sind die
@@ -130,16 +133,21 @@ deuten auf eine unvollständige Lieferung, nicht auf ein Reparaturproblem.
 | `can't open file '/app/vault_stl_repair.py': Permission denied` | Dockerfile ohne `chmod 0644 /app/*.py` (Docker legt URL-`ADD`s als 0600/root ab). Aktualisieren oder selbst ergänzen, dann `docker compose build`. |
 | `STL source folder not found` / leere Liste | Symlink zeigt ins Leere oder `01. DRAWERS` fehlt eine Ebene — `/vault` muss genau den Ordner mit `01. DRAWERS`, `02. …` enthalten |
 | `target must not lie inside source` | `/out` aus der Quellen-Hierarchie raus-mounten |
-| `Permission denied` beim Schreiben in `vault_repariert/` | `user:` in compose.yaml nicht dein Host-User (siehe Schritt 3) |
+| `Permission denied` beim Schreiben in `vault_repariert/` | Ordner wurde von Docker als root angelegt oder `.env` passt nicht zu deinem User (siehe Schritt 3) |
+| `unknown flag: --checksum` o. ä. beim Build | Altes Docker ohne BuildKit — Docker aktualisieren oder `DOCKER_BUILDKIT=1 docker compose build` |
 | RAM-Hunger / OOM-Killed | `--workers` runter (größte Module brauchen einige GB pro Worker) |
 | Container tot während Lauf | Einfach `docker compose run …` erneut starten — Resume-Datei im Zielordner setzt fort |
 
 ## Deinstallation
 
+Achtung: `vault_repariert/` liegt im Repo-Ordner und wäre mit weg. Erst die
+reparierten Dateien in Sicherheit bringen, dann löschen:
+
 ```bash
-docker compose down
-docker rmi vault-repair-vault-repair   # oder deinen build-tag
+mv /opt/vault-repair/vault_repariert ~/VAULT_repariert   # Ziel nach Wahl
+docker rmi vault-repair
 rm -rf /opt/vault-repair
 ```
 
-Es bleiben nur deine eigenen Verzeichnisse (`vault/`, `vault_repariert/`).
+Die Original-Bibliothek bleibt unberührt: `vault` ist nur ein Symlink, `rm -rf`
+löscht den Link, nicht das Ziel.
