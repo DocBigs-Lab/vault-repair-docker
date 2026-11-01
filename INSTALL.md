@@ -1,3 +1,5 @@
+[English](INSTALL.en.md) | **Deutsch**
+
 # Installationsanleitung
 
 ## Voraussetzungen
@@ -71,16 +73,17 @@ ARM-Geräten (ARM-Board, Raspberry Pi 5, KI-Box).
 docker compose run --rm vault-repair /vault /out --method numpy --workers 2
 ```
 
-Erwartetes Bild:
+Erwartetes Bild (gekürzt, das Upstream-Tool gibt Englisch aus):
 
 ```
 Source: /vault
 Target: /out
 Method: numpy
 STL files: 733, other files copied: 15
-    repairing: M5 Module 4F.stl (3096738 Dreiecke, open 1, non-manifold 1249, flipped 2487)
-[1/733] …: repaired (… -> open 0, non-manifold 0, flipped 0, 62 s)
-    done 1, left 732 (4% der Daten), restlich etwa 0:25:58
+To do: 733 (already done: 0)
+    repairing: M5 Module 4F.stl (3096738 triangles, open 1, non-manifold 1249, flipped 2487)
+[1/733] …: repaired (… -> open 0, non-manifold 0, flipped 0, …, 62 s)
+    done 1, left 732 (4% of data), elapsed 0:01:02, remaining about 0:25:58
 ```
 
 Fortschritt ist Zeile pro Datei; Restzeit ist am Anfang hochgerechnet, weil die größten
@@ -103,7 +106,9 @@ Zeitmonster der Bibliothek.
 
 Wer mehr Kerne frei hat: Abbrechen (Strg+C) und mit mehr Workern neu starten ist
 jederzeit sicher — die Resume-Datei im Zielordner setzt fort, Fertiges wird
-übersprungen. Richtwert: `worker ≈ min(Kerne/2, RAM_GB/6)`; bei hoher Worker-Zahl
+übersprungen. Richtwert: `worker ≈ min(Kerne/2, RAM_GB/6)`, also bei 8 GB RAM nur
+1 Worker (gemessen: Spitze 3,3 GiB für einen Worker am XL5²-Modul, siehe
+Troubleshooting `BrokenProcessPool`); bei hoher Worker-Zahl
 `OMP_NUM_THREADS=2` setzen (compose.yaml → `environment:`), sonst streiten die
 numpy-Threads der Worker untereinander um Kerne.
 
@@ -135,6 +140,7 @@ deuten auf eine unvollständige Lieferung, nicht auf ein Reparaturproblem.
 | `target must not lie inside source` | `/out` aus der Quellen-Hierarchie raus-mounten |
 | `Permission denied` beim Schreiben in `vault_repariert/` | Ordner wurde von Docker als root angelegt oder `.env` passt nicht zu deinem User (siehe Schritt 3) |
 | `unknown flag: --checksum` o. ä. beim Build | Altes Docker ohne BuildKit — Docker aktualisieren oder `DOCKER_BUILDKIT=1 docker compose build` |
+| `BrokenProcessPool: A process in the process pool was terminated abruptly` | Ein Worker wurde vom OOM-Killer des Kernels beendet (`sudo dmesg -T \| grep -i oom`). Die größten Module laufen zuerst, deshalb passiert das meist gleich am Anfang. Mit `--workers 1` neu starten; wenn die XL-Module durch sind, abbrechen und mit mehr Workern fortsetzen. |
 | RAM-Hunger / OOM-Killed | `--workers` runter (größte Module brauchen einige GB pro Worker) |
 | Container tot während Lauf | Einfach `docker compose run …` erneut starten — Resume-Datei im Zielordner setzt fort |
 

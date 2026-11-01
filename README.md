@@ -7,6 +7,8 @@
   <a href="https://docbigs-lab.de">https://docbigs-lab.de</a>
 </p>
 
+[English](README.en.md) | **Deutsch**
+
 # VAULT-STL-Reparatur im Docker-Container
 
 Docker-Wrapper für [rawel2/vault-stl-repair](https://github.com/rawel2/vault-stl-repair) (MIT):
@@ -45,7 +47,7 @@ printf 'HOST_UID=%s\nHOST_GID=%s\n' "$(id -u)" "$(id -g)" > .env
 # 4. Bauen (~2 min, danach kein Internet mehr nötig)
 docker compose build
 
-# 5. Reparieren
+# 5. Reparieren (bei ~8 GB RAM: --workers 1, siehe INSTALL.md)
 docker compose run --rm vault-repair /vault /out --method numpy --workers 2
 ```
 
@@ -57,7 +59,7 @@ Fertige Dateien liegen in `./vault_repariert/`, mit CSV-Bericht
 | Kommando | Zweck |
 |---|---|
 | `docker compose run --rm vault-repair /vault /out --method numpy` | komplette Bibliothek |
-| `… --workers 4` | mehr Kerne parallel (größte Module brauchen einige GB RAM **pro Worker**) |
+| `… --workers 4` | mehr Kerne parallel (größte Module brauchen bis zu ~3,3 GiB RAM **pro Worker**) |
 | `… --only "S6"` | nur Dateien mit „S6“ im Pfad |
 | `… --skip XL` | XL-Module auslassen (die größten Brocken) |
 | `… --all` | auch fehlerfreie Dateien durch die Reparatur-Jagd schicken |
