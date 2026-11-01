@@ -92,23 +92,76 @@ largest modules run first.
 ### Why the remaining time jumps at the start
 
 The repair time per file depends on the **number of errors**, not the triangle count:
-a large module with 24 defects can be done in under a minute, a smaller one with 7,500
-defects can take 20 minutes (the numpy repair stitches slits, closes holes and patches
-remaining knots iteratively). On top of that, the error-free files that are just copied
-(~3 s) dilute the percentage calculation, so the ETA is inaccurate for the first few
-minutes and settles after the first large faulty modules. Measured: a full run (733 STL,
-45 of them faulty, 2 workers) took 31:27, with two M5 modules eating about 80 % of that.
+a large module with few defects is done in a few minutes (XL5² with 20 defects: 86 s,
+XL4² with 105 defects: 609 s), a smaller one with 7,500 defects can take 20 minutes (the
+numpy repair stitches slits, closes holes and patches remaining knots iteratively). On top
+of that, the error-free files that are just copied (~3 s) dilute the percentage
+calculation, so the ETA is inaccurate for the first few minutes and settles after the
+first large faulty modules.
+
+Measured full runs:
+
+| Library release | Faulty files | Host | Duration |
+|---|---|---|---|
+| newer (733 STL) | 45 | 2 workers | 31:27 (two M5 modules ~80 % of it) |
+| older (723 STL) | 305 (303 repaired) | 1 worker, 8 GB RAM shared with other services, 4 GB swap | 3:01:25 |
 
 If you don't print the XL modules (beds smaller than 340×320 mm, e.g. Snapmaker U1):
 just add `--skip XL` — the XLs lie diagonally at 42.8° and are the time hogs of the library.
 
 If you have more cores to spare: aborting (Ctrl+C) and restarting with more workers is
 always safe — the resume file in the target folder continues, finished files are skipped.
-Rule of thumb: `workers ≈ min(cores/2, RAM_GB/6)`, so only 1 worker with 8 GB of RAM
-(measured: peak 3.3 GiB for one worker on the XL5² module, see troubleshooting
-`BrokenProcessPool`); with many workers, set
-`OMP_NUM_THREADS=2` (compose.yaml → `environment:`), otherwise the workers' numpy threads
-compete for cores.
+With many workers, set `OMP_NUM_THREADS=2` (compose.yaml → `environment:`), otherwise
+the workers' numpy threads compete for cores.
+
+### RAM: what is actually free counts
+
+One worker peaks at **3.3 GiB** on the XL5² module (measured). What matters is not the
+total RAM but what is free next to your other services:
+
+```bash
+free -h    # "available" column
+```
+
+Rule of thumb: `workers ≈ min(cores/2, available_GiB/3.5)`. If "available" is below
+~3.5 GiB, even one worker is too much and the kernel kills the process (see
+troubleshooting). A swap file helps; the peak is short, so the run only gets a bit slower:
+
+```bash
+sudo fallocate -l 4G /swapfile && sudo chmod 600 /swapfile
+sudo mkswap /swapfile && sudo swapon /swapfile
+echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab   # persistent
+```
+
+(`fallocate` applies to ext4; on btrfs a swap file needs different steps.)
+With little free RAM, stay at **one** worker, even after the XL modules — a second
+worker would just spill into swap.
+
+### Long runs over SSH
+
+A full run can take hours. A dropped SSH connection does **not** stop the container: it
+keeps running in the background and, because the client was cut off, is not cleaned up by
+`--rm` either. If you then start a second run, both write to the same target folder and
+overwrite each other's resume file.
+
+So start long runs in `tmux` (enter the commands one at a time):
+
+```bash
+tmux new -s vault
+```
+```bash
+cd /opt/vault-repair && docker compose run --rm vault-repair /vault /out --method numpy --workers 1; echo "Exit code: $?"
+```
+
+Detach with Ctrl+B, then D; reattach with `tmux attach -t vault`.
+Before every restart, make sure no old run is still active:
+
+```bash
+docker ps --filter name=vault-repair    # must be empty
+```
+
+If one is still running: `docker stop <ID> && docker rm <ID>`. If it wrote in parallel
+with another run, empty the target folder and start over cleanly.
 
 ## Step 6 — Check the result
 
@@ -136,9 +189,11 @@ of those files (`ls -la`) — tiny files point to an incomplete delivery, not a 
 | `target must not lie inside source` | Mount `/out` outside the source hierarchy |
 | `Permission denied` when writing to `vault_repariert/` | Folder was created by Docker as root, or `.env` doesn't match your user (see step 3) |
 | `unknown flag: --checksum` or similar during build | Old Docker without BuildKit — update Docker or use `DOCKER_BUILDKIT=1 docker compose build` |
-| `BrokenProcessPool: A process in the process pool was terminated abruptly` | A worker was killed by the kernel's OOM killer (`sudo dmesg -T \| grep -i oom`). The largest modules run first, so this usually happens right at the start. Restart with `--workers 1`; once the XL modules are done, abort and continue with more workers. |
-| High RAM usage / OOM-killed | Lower `--workers` (the largest modules need several GB per worker) |
+| `BrokenProcessPool: A process in the process pool was terminated abruptly` | A worker was killed by the kernel's OOM killer (`sudo dmesg -T \| grep -i oom`). The largest modules run first, so this usually happens right at the start. Restart with `--workers 1`; once the XL modules are done, abort and continue with more workers if `free -h` shows enough "available" RAM. |
+| Run ends without an error message (with `--workers 1`), exit code 137 | Also the OOM killer: with one worker the main process does the work itself and is killed without a traceback. Check `free -h`; below ~3.5 GiB "available", set up swap (see "RAM: what is actually free counts") |
+| High RAM usage / OOM-killed | Lower `--workers` (the largest modules need up to 3.3 GiB per worker), otherwise add swap |
 | Container died during the run | Just run `docker compose run …` again — the resume file in the target folder continues |
+| SSH connection dropped | The container keeps running. Check `docker ps --filter name=vault-repair` and do **not** start a second run while it is active (see "Long runs over SSH") |
 
 ## Uninstall
 

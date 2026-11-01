@@ -92,13 +92,19 @@ Module zuerst laufen.
 ### Warum die Restzeit am Anfang springt
 
 Die Reparaturzeit pro Datei hängt von der **Fehlerzahl** ab, nicht von der
-Dreieckszahl: ein großes Modul mit 24 Defekten kann in unter einer Minute fertig
-sein, ein kleinerer mit 7.500 Defekten 20 Minuten brauchen (die numpy-Reparatur
-näht Schlitze, schließt Löcher und patcht verbleibende Knoten iterativ). Weil dazu
-die fehlerfreien Kopier-Dateien (~3 s) die Prozent-Rechnung verwässern, ist das
-ETA in den ersten Minuten ungenau — nach den ersten großen fehlerhaften Modulen
-pendelt es sich ein. Messwert: Ein kompletter Lauf (733 STL, davon 45 mit Fehlern,
-2 Worker) dauerte 31:27, davon fraßen zwei M5-Module rund 80 %.
+Dreieckszahl: ein großes Modul mit wenigen Defekten ist in wenigen Minuten fertig
+(XL5² mit 20 Defekten: 86 s, XL4² mit 105 Defekten: 609 s), ein kleineres mit 7.500
+Defekten kann 20 Minuten brauchen (die numpy-Reparatur näht Schlitze, schließt
+Löcher und patcht verbleibende Knoten iterativ). Weil dazu die fehlerfreien
+Kopier-Dateien (~3 s) die Prozent-Rechnung verwässern, ist das ETA in den ersten
+Minuten ungenau — nach den ersten großen fehlerhaften Modulen pendelt es sich ein.
+
+Messwerte kompletter Läufe:
+
+| Bibliotheksstand | Fehlerdateien | Host | Dauer |
+|---|---|---|---|
+| neuer (733 STL) | 45 | 2 Worker | 31:27 (zwei M5-Module ~80 % davon) |
+| älter (723 STL) | 305 (303 repariert) | 1 Worker, 8 GB RAM mit weiteren Diensten, 4 GB Swap | 3:01:25 |
 
 Wer die XL-Module nicht druckt (Betten unter 340×320 mm, z. B. Snapmaker U1):
 einfach `--skip XL` ergänzen — die XLs liegen quer bei 42,8° und sind die
@@ -106,11 +112,58 @@ Zeitmonster der Bibliothek.
 
 Wer mehr Kerne frei hat: Abbrechen (Strg+C) und mit mehr Workern neu starten ist
 jederzeit sicher — die Resume-Datei im Zielordner setzt fort, Fertiges wird
-übersprungen. Richtwert: `worker ≈ min(Kerne/2, RAM_GB/6)`, also bei 8 GB RAM nur
-1 Worker (gemessen: Spitze 3,3 GiB für einen Worker am XL5²-Modul, siehe
-Troubleshooting `BrokenProcessPool`); bei hoher Worker-Zahl
-`OMP_NUM_THREADS=2` setzen (compose.yaml → `environment:`), sonst streiten die
-numpy-Threads der Worker untereinander um Kerne.
+übersprungen. Bei hoher Worker-Zahl `OMP_NUM_THREADS=2` setzen (compose.yaml →
+`environment:`), sonst streiten die numpy-Threads der Worker untereinander um Kerne.
+
+### RAM: was wirklich frei ist, zählt
+
+Ein Worker braucht am XL5²-Modul in der Spitze **3,3 GiB** (gemessen). Maßgeblich ist
+nicht der gesamte RAM, sondern was neben deinen anderen Diensten frei ist:
+
+```bash
+free -h    # Spalte "available"
+```
+
+Richtwert: `worker ≈ min(Kerne/2, available_GiB/3,5)`. Liegt „available“ unter
+~3,5 GiB, reicht selbst ein Worker nicht, und der Kernel beendet den Prozess (siehe
+Troubleshooting). Dann hilft eine Swap-Datei; die Spitze ist kurz, der Lauf wird nur
+etwas langsamer:
+
+```bash
+sudo fallocate -l 4G /swapfile && sudo chmod 600 /swapfile
+sudo mkswap /swapfile && sudo swapon /swapfile
+echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab   # dauerhaft
+```
+
+(`fallocate` gilt für ext4; auf btrfs braucht eine Swap-Datei andere Schritte.)
+Mit wenig freiem RAM bei **einem** Worker bleiben, auch nach den XL-Modulen — ein
+zweiter Worker würde nur in den Swap ausweichen.
+
+### Lange Läufe über SSH
+
+Ein kompletter Lauf kann Stunden dauern. Bricht die SSH-Verbindung ab, beendet das den
+Container **nicht**: er läuft im Hintergrund weiter und wird wegen des abgebrochenen
+Clients auch nicht per `--rm` aufgeräumt. Startet man dann einen zweiten Lauf, schreiben
+beide in denselben Zielordner und überschreiben gegenseitig die Resume-Datei.
+
+Deshalb lange Läufe in `tmux` starten (Befehle einzeln eingeben):
+
+```bash
+tmux new -s vault
+```
+```bash
+cd /opt/vault-repair && docker compose run --rm vault-repair /vault /out --method numpy --workers 1; echo "Exit-Code: $?"
+```
+
+Abkoppeln mit Strg+B, dann D; wieder verbinden mit `tmux attach -t vault`.
+Vor jedem Neustart prüfen, dass kein alter Lauf mehr aktiv ist:
+
+```bash
+docker ps --filter name=vault-repair    # muss leer sein
+```
+
+Läuft dort noch einer: `docker stop <ID> && docker rm <ID>`. Hat er parallel zu einem
+anderen Lauf geschrieben, den Zielordner leeren und sauber neu starten.
 
 ## Schritt 6 — Ergebnis prüfen
 
@@ -140,9 +193,11 @@ deuten auf eine unvollständige Lieferung, nicht auf ein Reparaturproblem.
 | `target must not lie inside source` | `/out` aus der Quellen-Hierarchie raus-mounten |
 | `Permission denied` beim Schreiben in `vault_repariert/` | Ordner wurde von Docker als root angelegt oder `.env` passt nicht zu deinem User (siehe Schritt 3) |
 | `unknown flag: --checksum` o. ä. beim Build | Altes Docker ohne BuildKit — Docker aktualisieren oder `DOCKER_BUILDKIT=1 docker compose build` |
-| `BrokenProcessPool: A process in the process pool was terminated abruptly` | Ein Worker wurde vom OOM-Killer des Kernels beendet (`sudo dmesg -T \| grep -i oom`). Die größten Module laufen zuerst, deshalb passiert das meist gleich am Anfang. Mit `--workers 1` neu starten; wenn die XL-Module durch sind, abbrechen und mit mehr Workern fortsetzen. |
-| RAM-Hunger / OOM-Killed | `--workers` runter (größte Module brauchen einige GB pro Worker) |
+| `BrokenProcessPool: A process in the process pool was terminated abruptly` | Ein Worker wurde vom OOM-Killer des Kernels beendet (`sudo dmesg -T \| grep -i oom`). Die größten Module laufen zuerst, deshalb passiert das meist gleich am Anfang. Mit `--workers 1` neu starten; wenn die XL-Module durch sind und `free -h` genug „available“ zeigt, abbrechen und mit mehr Workern fortsetzen. |
+| Lauf endet ohne Fehlermeldung (mit `--workers 1`), Exit-Code 137 | Ebenfalls OOM-Killer: bei einem Worker rechnet der Hauptprozess selbst und wird ohne Traceback beendet. `free -h` prüfen, bei unter ~3,5 GiB „available“ Swap einrichten (siehe „RAM: was wirklich frei ist, zählt“) |
+| RAM-Hunger / OOM-Killed | `--workers` runter (größte Module brauchen bis zu 3,3 GiB pro Worker), sonst Swap |
 | Container tot während Lauf | Einfach `docker compose run …` erneut starten — Resume-Datei im Zielordner setzt fort |
+| SSH-Verbindung abgebrochen | Container läuft weiter. `docker ps --filter name=vault-repair` prüfen und **keinen** zweiten Lauf starten, solange er aktiv ist (siehe „Lange Läufe über SSH“) |
 
 ## Deinstallation
 

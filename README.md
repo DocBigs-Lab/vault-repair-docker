@@ -47,7 +47,7 @@ printf 'HOST_UID=%s\nHOST_GID=%s\n' "$(id -u)" "$(id -g)" > .env
 # 4. Bauen (~2 min, danach kein Internet mehr nötig)
 docker compose build
 
-# 5. Reparieren (bei ~8 GB RAM: --workers 1, siehe INSTALL.md)
+# 5. Reparieren (pro Worker ~3,5 GiB „available“ laut free -h, sonst --workers 1 bzw. Swap; siehe INSTALL.md)
 docker compose run --rm vault-repair /vault /out --method numpy --workers 2
 ```
 
@@ -66,6 +66,8 @@ Fertige Dateien liegen in `./vault_repariert/`, mit CSV-Bericht
 
 **Unterbrechen jederzeit ok:** Die Resume-Datei `vault_stl_repair.json` liegt im Zielordner —
 nächster `run` überspringt fertige Dateien. Ctrl+C, Reboot, Container-Tod: alles egal.
+Ausnahme SSH-Abbruch: Dann läuft der Container im Hintergrund weiter. Vor einem Neustart
+`docker ps` prüfen, nie zwei Läufe auf denselben Zielordner. Lange Läufe am besten in `tmux`.
 
 Wie viele Dateien Fehler haben, hängt vom Stand deiner gelieferten Bibliothek ab
 (USSA liefert nach und nach fixes nach) — die Laufzeit folgt der **Fehlerzahl pro

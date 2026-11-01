@@ -46,7 +46,7 @@ printf 'HOST_UID=%s\nHOST_GID=%s\n' "$(id -u)" "$(id -g)" > .env
 # 4. Build (~2 min, no internet needed afterwards)
 docker compose build
 
-# 5. Repair (with ~8 GB of RAM: --workers 1, see INSTALL.en.md)
+# 5. Repair (~3.5 GiB "available" per worker in free -h, otherwise --workers 1 or swap; see INSTALL.en.md)
 docker compose run --rm vault-repair /vault /out --method numpy --workers 2
 ```
 
@@ -65,6 +65,8 @@ Repaired files end up in `./vault_repariert/`, together with a CSV report
 
 **Interrupting is always fine:** the resume file `vault_stl_repair.json` lives in the target
 folder, and the next `run` skips finished files. Ctrl+C, reboot, dead container: doesn't matter.
+Exception, a dropped SSH connection: the container keeps running in the background. Check
+`docker ps` before restarting and never run two jobs on the same target folder. Best run long jobs in `tmux`.
 
 How many files have errors depends on the release of the library you received
 (USSA ships fixes over time). Run time follows the **number of errors per file**,
