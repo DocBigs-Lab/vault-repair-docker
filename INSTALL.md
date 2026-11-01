@@ -108,11 +108,20 @@ numpy-Threads der Worker untereinander um Kerne.
 
 ```bash
 ls vault_repariert/                  # Spiegel der Bibliothek
-grep -i "still has errors" vault_repariert/*.csv   # sollten nur die zwei S6-Module sein
+grep -i "still has errors" vault_repariert/*.csv   # Dateien, die numpy nicht ganz sauber bekam
+# Plausibilitäts-Check: wie viele Kopien meldet die CSV mit 0 Dreiecken?
+awk -F, '$3==0 && $2=="copied"' vault_repariert/*.csv | wc -l
 ```
 
-Die zwei S6-Module (1F/2F) sind erwarteterweise unbearbeitet — Upstream-Limit. Für die gibt es
-aktuell nur die Windows-Methode des Upstream-Tools.
+Bei „still has errors" gilt: die Erwartung hängt vom Stand deiner gelieferten
+Bibliothek ab — im Extremfall (frische USSA-Lieferung) sind es null Dateien,
+bei älterem Stand laut Upstream die zwei S6-Module (1F/2F), für die es aktuell
+nur die Windows-Methode des Upstream-Tools gibt.
+
+Der 0-Dreiecke-Check: Zeilen mit `copied` und 0 Dreiecken wurden ohne jeden
+Scan durchgewinkt. Einzelne davon sind harmlos, aber wenn halbe Bibliotheken
+so dastehen, prüf die Dateigrößen dieser Dateien (`ls -la`) — winzige Dateien
+deuten auf eine unvollständige Lieferung, nicht auf ein Reparaturproblem.
 
 ## Troubleshooting
 

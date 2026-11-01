@@ -53,15 +53,17 @@ nächster `run` überspringt fertige Dateien. Ctrl+C, Reboot, Container-Tod: all
 
 ## Tempo (Richtwerte)
 
-| Host | Ganze Bibliothek (733 STL, 310 mit Fehlern) |
+| Host | Ganze Bibliothek (733 STL) |
 |---|---|
-| Laptop Core Ultra 7 (2 Worker, Upstream-Messung) | ~2 h |
-| dein docker-host (2 Worker, live gemessen 31.10.) | ETA nach den großen Fehlerhaften ~3–5 h; mit `--skip XL` und mehr Workern deutlich drunter |
-| DGX Spark / arm64-KI-Box (4+ Worker) | grob unter 1 h (Erwartung, nicht Referenzwert) |
+| Laptop Core Ultra 7 (2 Worker, Upstream-Messung, 310 Fehlerdateien) | ~2 h |
+| docker-host (2 Worker, kompletter Lauf 31.10., **45** Fehlerdateien) | **31:27** — zwei M5-Module fraßen ~80 % der Zeit, der Rest war Kopierarbeit |
+| DGX Spark / arm64-KI-Box (4+ Worker) | grob eine halbe Stunde (Erwartung bei 45 Fehlerdateien, nicht Referenzwert) |
 
-Die Restzeit-Anzeige springt am Anfang: Reparaturzeit hängt von der **Fehlerzahl**
-pro Datei ab, nicht von der Dateigröße — Details und Tempo-Hebel (`--skip XL`,
-`--workers`, Resume-Neustart) in [INSTALL.md](INSTALL.md).
+Wie viele Dateien Fehler haben, hängt vom Stand deiner gelieferten Bibliothek ab
+(USSA liefert nach und nach fixes nach) — die Laufzeit folgt der **Fehlerzahl pro
+Datei**, nicht der Dateigröße: die zwei M5-Module mit je 1.300–1.700 s waren
+langamer als alle anderen 43 reparierten zusammen. Details und Tempo-Hebel
+(`--skip XL`, `--workers`, Resume-Neustart) in [INSTALL.md](INSTALL.md).
 
 ## Aufbau
 
